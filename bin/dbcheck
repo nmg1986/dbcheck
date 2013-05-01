@@ -1,0 +1,138 @@
+#!/bin/bash
+
+export ORACLE_SID=lottery98
+export ORACLE_UNQNAME=lottery98
+export ORACLE_base=/u01/app/oracle
+export ORACLE_HOME=/u01/app/oracle/product/11.2.0
+export NLS_LANG="SIMPLIFIED CHINESE_CHINA.ZHS16GBK"
+export PATH=$PATH:$ORACLE_HOME/bin
+
+export CONNECT_USER='tuisong'
+export CONNECT_PASSWORD='tuisong'
+export LOG_FILE=/var/log/dbcheck.log
+
+HOST="172.16.208.97"
+
+check_lsnrctl()
+{
+	lsnrctl status > /dev/null 2>&1 
+	return $? 
+}
+#check_lsnrctl
+
+connect_database()
+{
+	log "[info]" "connect_database" "try connect dbase"
+	sqlplus $CONNECT_USER/$CONNECT_PASSWORD <<-EOF >/dev/null 2>&1
+		WHENEVER SQLERROR EXIT SQL.SQLCODE	
+		exit 
+	EOF 
+	return $?
+}	
+
+start_lsnrctl()
+{
+	log "[info]" "start_lsnrctl" "try start lsnrctl"
+	lsnrctl start > /dev/null 2>&1
+	return $?
+}
+
+start_database()
+{
+	log "[info]" "start_database" "try start database"
+	sqlplus / as sysdba <<-EOF >/dev/null 2>&1
+		whenever sqlerror exit sql.sqlcode;
+		startup;
+		exit;
+	EOF
+	return $?
+}
+send_email()
+{
+	log "[info]" "[send email]" "[start]"
+	$mail   -s $smtp_server \
+		-f $send_from \
+		-t $send_to \
+		-cc $send_cc \
+		-u "警告：宕机告警" \
+		-m "<html>
+            	    	<hr/>
+            		<font color="red"><strong>告警主机 : $HOST </strong></font><br><br>
+            		<font color="red"><strong>所属机房 : 酒仙桥</strong></font><br><br>
+            		<font color="red"><strong>告警原因 : $1 </strong></font><br><br>
+            		<font color="red"><strong>告警时间 : $(date +'%Y-%m-%d') $(date +'%H:%M:%S') </strong></font><br>
+            		<hr/>
+         	</html>" \
+		-xu $send_user \
+		-xp $send_password 
+		-o message-charset=utf-8 >/dev/null 2>/dev/null
+	if [ $? -eq 0 ];then
+		log "[send email]" "[succeed]"
+	else
+		log "[send email]" "[failed]"
+	fi
+
+}
+
+log()
+{
+	echo "$(date +'%Y-%m-%d') $(date +'%H:%M:%S')$1  $2  $3" >> /var/log/dbcheck.log
+}
+
+while true
+do
+	
+if check_lsnrctl -eq 0 ;then
+	log "[info]" "[check_lsnrctl]" "lsnrctl is running"
+	if [ "$1" = "-v" ];then
+		echo "[info]" "[check_lsnrctl]" "lsnrctl is running"
+	fi
+	if connect_database -eq 0 ;then
+		log "[info]" "[connect_database]" "connect succeed"
+		if [ "$1" = "-v" ];then
+			echo "[info]" "[connect_database]" "connect succeed"
+		fi
+	else
+		log "[warn]" "[connect_database]" "connect failed"
+		if [ "$1" = "-v" ];then
+			echo "[warn]" "[connect_database]" "connect failed"
+		fi
+		if start_database -eq 0 ;then
+			log "[info]" "[start_database]" "database start succeed"
+			if [ "$1" = "-v" ];then
+				echo "[info]" "[connect_database]" "database start succeed"
+			fi
+		else
+			log "[erro]" "[start_database]" "database start failed"
+			if [ "$1" = "-v" ];then
+				echo "[erro]" "[connect_database]" "database start failed"
+			fi
+			send_mail "database start failed"
+		fi
+	fi
+	
+else
+	log "[warn]" "[check_lsnrctl]" "lsnrctl is stoped"
+	if [ "$1" = "-v" ];then
+		echo "[warn]" "[check_lsnrctl]" "lsnrctl is stoped"
+	fi
+	start_lsnrctl
+	if start_lsnrctl -eq 0 ;then
+		log "[info]" "start_lsnrctl" "start lsnrctl succeed"
+		if [ "$1" = "-v" ];then
+			echo "[info]" "[start_lsnrctl]" "start lsnrctl succeed"
+		fi
+	else
+		log "[erro]" "start_lsnrctl" "start lsnrctl failed"
+		if [ "$1" = "-v" ];then
+			echo "[erro]" "[start_lsnrctl]" "start lsnrctl failed"
+		fi
+		send_mail "cannot start lsnrctl,please contact admin"
+	fi
+fi
+
+sleep 10
+done
+
+
+exit 0 

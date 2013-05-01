@@ -1,0 +1,28 @@
+#!/bin/bash
+
+echo -n "Install DBCheck Daemon..."
+
+if [ ! -d /usr/dbcheck ];then
+	mkdir /usr/dbcheck
+fi
+
+if [ ! -d /usr/dbcheck/bin ];then
+	mkdir /usr/dbcheck/bin
+fi
+
+if [ ! -d /usr/dbcheck/sbin ];then
+	mkdir /usr/dbcheck/sbin
+fi
+
+if [ ! -d /usr/dbcheck/etc ];then
+	mkdir /usr/dbcheck/etc
+fi		
+
+
+install bin/dbcheck   /usr/dbcheck/bin
+install sbin/sendEmail  /usr/dbcheck/sbin
+install sbin/dbcheck-init /etc/init.d/dbcheck
+ln -sf  /etc/init.d/dbcheck  /usr/sbin/rcdbcheck
+
+
+echo "Done"
